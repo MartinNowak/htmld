@@ -454,6 +454,17 @@ struct Node {
 		}
 	}
 
+	/// output unescaped content for script and style tags
+	void innerRaw(Appender)(ref Appender app) const {
+		assert(tag_ == "script" || tag_ == "style");
+		if (auto child = firstChild_)
+		{
+			assert(child.isTextNode);
+			assert(child.next_ is null);
+			app.put(child.tag_);
+		}
+	}
+
 	void outerHTML(Appender)(ref Appender app) const {
 		final switch (type) with (NodeTypes) {
 		case Element:
@@ -473,7 +484,15 @@ struct Node {
 
 			if (!isSelfClosing) {
 				app.put('>');
-				innerHTML(app);
+				switch (tagHashOf(tag_))
+				{
+				case tagHashOf("script"), tagHashOf("style"):
+					innerRaw(app);
+					break;
+				default:
+					innerHTML(app);
+					break;
+				}
 				app.put("</");
 				app.put(tag_);
 				app.put('>');
@@ -687,6 +706,17 @@ auto createDocument(size_t options = DOMCreateOptions.Default)(HTMLString source
 	return document;
 }
 
+unittest
+{
+	auto doc = createDocument(`<html><body>&nbsp;</body></html>`);
+	assert(doc.root.outerHTML == `<root><html><body>&#160;</body></html></root>`);
+	doc = createDocument!(DOMCreateOptions.None)(`<html><body>&nbsp;</body></html>`);
+	assert(doc.root.outerHTML == `<root><html><body>&amp;nbsp;</body></html></root>`);
+	doc = createDocument(`<script>&nbsp;</script>`);
+	assert(doc.root.outerHTML == `<root><script>&nbsp;</script></root>`, doc.root.outerHTML);
+	doc = createDocument(`<style>&nbsp;</style>`);
+	assert(doc.root.outerHTML == `<root><style>&nbsp;</style></root>`, doc.root.outerHTML);
+}
 
 static auto createDocument() {
 	auto document = Document();
